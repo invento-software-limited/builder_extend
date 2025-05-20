@@ -5,3 +5,7 @@
 tags
 node_modules
 __pycache__
+builder_extend/public/frontend
+builder_extend/public/page_scripts
+builder_extend/public/page_styles
+builder_extend/www/_builder.html

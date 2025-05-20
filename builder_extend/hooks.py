@@ -28,6 +28,10 @@ app_license = "mit"
 # app_include_css = "/assets/builder_extend/css/builder_extend.css"
 # app_include_js = "/assets/builder_extend/js/builder_extend.js"
 
+# app_include_js = [
+#     "/assets/builder_extend/js/extend_builder.js",
+# ]
+
 # include js, css files in header of web template
 # web_include_css = "/assets/builder_extend/css/builder_extend.css"
 # web_include_js = "/assets/builder_extend/js/builder_extend.js"
@@ -41,6 +45,8 @@ app_license = "mit"
 
 # include js in page
 # page_js = {"page" : "public/js/file.js"}
+
+website_generators = ["Builder Page"]
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
@@ -242,3 +248,6 @@ app_license = "mit"
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+app_include_icons = [
+	"builder_extend/icons/timeless/icons.svg",
+]

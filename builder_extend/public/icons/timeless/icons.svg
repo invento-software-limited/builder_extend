@@ -1,0 +1,6 @@
+<svg id="my-symbols" aria-hidden="true" style="position: absolute; width: 0; height: 0; overflow: hidden;" class="d-block" xmlns="http://www.w3.org/2000/svg">
+	<symbol viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" id="icon-user">
+		<path d="M17.727 18.728H20a1 1 0 0 0 1-1v-2.537a.818.818 0 0 0-.515-.76l-3.061-1.226a.819.819 0 0 1-.515-.758v-.718a3.258 3.258 0 0 0 1.636-2.82V7.274a3.272 3.272 0 0 0-4.909-2.835m.304 10.811l-3.062-1.227a.818.818 0 0 1-.514-.758v-.369c2.675-.357 3.272-1.532 3.272-1.532S12 9.728 12 8.092a3.273 3.273 0 1 0-6.545 0c0 1.636-1.637 3.272-1.637 3.272s.597 1.175 3.273 1.532v.37a.818.818 0 0 1-.515.758l-3.061 1.228a.819.819 0 0 0-.515.757v1.72a1 1 0 0 0 1 1h9.454a1 1 0 0 0 1-1v-1.72a.818.818 0 0 0-.514-.759z"
+			stroke="#ffffff" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"></path>
+	</symbol>
+</svg>

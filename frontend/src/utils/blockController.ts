@@ -1,45 +1,45 @@
-import useStore from "@/store";
-import { nextTick } from "vue";
-import Block, { BlockDataKey } from "./block";
+import type Block from "@/block";
+import type { BlockDataKey } from "@/block";
+import useCanvasStore from "@/stores/canvasStore";
 import getBlockTemplate from "./blockTemplate";
 
-const store = useStore();
+const canvasStore = useCanvasStore();
 
 const blockController = {
 	clearSelection: () => {
-		store.activeCanvas?.clearSelection();
+		canvasStore.activeCanvas?.clearSelection();
 	},
 	getFirstSelectedBlock: () => {
-		return store.activeCanvas?.selectedBlocks[0] as Block;
+		return canvasStore.activeCanvas?.selectedBlocks[0] as Block;
 	},
 	getSelectedBlocks: () => {
-		return store.activeCanvas?.selectedBlocks || [];
+		return canvasStore.activeCanvas?.selectedBlocks || [];
 	},
 	isRoot() {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().isRoot();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().isRoot();
 	},
 	isFlex() {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().isFlex();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().isFlex();
 	},
 	isGrid() {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().isGrid();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().isGrid();
 	},
 	setStyle: (style: styleProperty, value: StyleValue) => {
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			block.setStyle(style, value);
 		});
 	},
 	setBaseStyle: (style: styleProperty, value: StyleValue) => {
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			block.setBaseStyle(style, value);
 		});
 	},
-	getStyle: (style: styleProperty) => {
+	getStyle: (style: styleProperty, nativeOnly?: boolean, cascading?: boolean) => {
 		let styleValue = "__initial__" as StyleValue;
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			if (styleValue === "__initial__") {
-				styleValue = block.getStyle(style);
-			} else if (styleValue !== block.getStyle(style)) {
+				styleValue = block.getStyle(style, undefined, nativeOnly, cascading);
+			} else if (styleValue !== block.getStyle(style, undefined, nativeOnly, cascading)) {
 				styleValue = "Mixed";
 			}
 		});
@@ -47,45 +47,56 @@ const blockController = {
 	},
 	getNativeStyle: (style: styleProperty) => {
 		let styleValue = "__initial__" as StyleValue;
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			if (styleValue === "__initial__") {
-				styleValue = block.getNativeStyle(style);
-			} else if (styleValue !== block.getNativeStyle(style)) {
+				styleValue = block.getStyle(style, undefined, true);
+			} else if (styleValue !== block.getStyle(style, undefined, true)) {
 				styleValue = "Mixed";
 			}
 		});
 		return styleValue;
 	},
-	isBLockSelected: () => {
-		return store.activeCanvas?.selectedBlocks.length || 0 > 0;
+	getCascadingStyle: (style: styleProperty) => {
+		let styleValue = "__initial__" as StyleValue;
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
+			if (styleValue === "__initial__") {
+				styleValue = block.getStyle(style, undefined, false, true);
+			} else if (styleValue !== block.getStyle(style, undefined, false, true)) {
+				styleValue = "Mixed";
+			}
+		});
+		return styleValue;
+	},
+	isBlockSelected: () => {
+		return canvasStore.activeCanvas?.selectedBlocks.length || 0 > 0;
 	},
 	multipleBlocksSelected: () => {
-		return store.activeCanvas?.selectedBlocks && store.activeCanvas?.selectedBlocks.length > 1;
+		return canvasStore.activeCanvas?.selectedBlocks && canvasStore.activeCanvas?.selectedBlocks.length > 1;
 	},
 	isText: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().isText();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().isText();
 	},
 	isContainer: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().isContainer();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().isContainer();
 	},
 	isImage: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().isImage();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().isImage();
 	},
 	isVideo: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().isVideo();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().isVideo();
 	},
 	isButton: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().isButton();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().isButton();
 	},
 	isLink: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().isLink();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().isLink();
 	},
 	isInput: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().isInput();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().isInput();
 	},
 	getAttribute: (attribute: string) => {
 		let attributeValue = "__initial__" as StyleValue;
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			if (attributeValue === "__initial__") {
 				attributeValue = block.getAttribute(attribute);
 			} else if (attributeValue !== block.getAttribute(attribute)) {
@@ -95,18 +106,18 @@ const blockController = {
 		return attributeValue;
 	},
 	setAttribute: (attribute: string, value: string) => {
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			block.setAttribute(attribute, value);
 		});
 	},
 	removeAttribute: (attribute: string) => {
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			block.removeAttribute(attribute);
 		});
 	},
 	getKeyValue: (key: "element" | "innerHTML" | "visibilityCondition") => {
 		let keyValue = "__initial__" as StyleValue | undefined;
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			if (keyValue === "__initial__") {
 				keyValue = block[key];
 			} else if (keyValue !== block[key]) {
@@ -116,7 +127,7 @@ const blockController = {
 		return keyValue;
 	},
 	setKeyValue: (key: "element" | "innerHTML" | "visibilityCondition", value: string) => {
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			if (key === "element" && block.blockName === "container") {
 				// reset blockName since it will not be a container anymore
 				delete block.blockName;
@@ -126,21 +137,21 @@ const blockController = {
 	},
 	getClasses: () => {
 		let classes = [] as string[];
-		if (blockController.isBLockSelected()) {
+		if (blockController.isBlockSelected()) {
 			classes = blockController.getFirstSelectedBlock().getClasses() || [];
 		}
 		return classes;
 	},
 	setClasses: (classes: string[]) => {
-		const block = store.activeCanvas?.selectedBlocks[0];
+		const block = canvasStore.activeCanvas?.selectedBlocks[0];
 		if (!block) return;
 		block.classes = classes;
 	},
 	getRawStyles: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().getRawStyles();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().getRawStyles();
 	},
 	setRawStyles: (rawStyles: BlockStyleMap) => {
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			Object.keys(block.rawStyles).forEach((key) => {
 				if (!rawStyles[key]) {
 					delete block.rawStyles[key];
@@ -150,10 +161,10 @@ const blockController = {
 		});
 	},
 	getCustomAttributes: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().getCustomAttributes();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().getCustomAttributes();
 	},
 	setCustomAttributes: (customAttributes: BlockAttributeMap) => {
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			Object.keys(block.customAttributes).forEach((key) => {
 				if (!customAttributes[key]) {
 					delete block.customAttributes[key];
@@ -163,16 +174,16 @@ const blockController = {
 		});
 	},
 	getParentBlock: () => {
-		return store.activeCanvas?.selectedBlocks[0]?.getParentBlock();
+		return canvasStore.activeCanvas?.selectedBlocks[0]?.getParentBlock();
 	},
 	setTextColor: (color: string) => {
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			block.setTextColor(color);
 		});
 	},
 	getTextColor: () => {
 		let color = "__initial__" as StyleValue;
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			if (color === "__initial__") {
 				color = block.getTextColor();
 			} else if (color !== block.getTextColor()) {
@@ -182,13 +193,13 @@ const blockController = {
 		return color;
 	},
 	setFontFamily: (value: string) => {
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			block.setFontFamily(value);
 		});
 	},
 	getFontFamily: () => {
 		let fontFamily = "__initial__" as StyleValue;
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			if (fontFamily === "__initial__") {
 				fontFamily = block.getFontFamily();
 			} else if (fontFamily !== block.getFontFamily()) {
@@ -198,36 +209,40 @@ const blockController = {
 		return fontFamily;
 	},
 	isHTML: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().isHTML();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().isHTML();
 	},
 	getInnerHTML: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().getInnerHTML();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().getInnerHTML();
+	},
+	getText: () => {
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().getText();
 	},
 	setInnerHTML: (value: string) => {
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			block.setInnerHTML(value);
 		});
 	},
 	getTextContent: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().getTextContent();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().getTextContent();
 	},
 	setDataKey: (key: keyof BlockDataKey, value: string) => {
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			block.setDataKey(key, value);
 		});
 	},
 	getDataKey: (key: keyof BlockDataKey) => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().getDataKey(key);
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().getDataKey(key);
 	},
 	isRepeater: () => {
-		return blockController.isBLockSelected() && blockController.getFirstSelectedBlock().isRepeater();
+		return blockController.isBlockSelected() && blockController.getFirstSelectedBlock().isRepeater();
 	},
-	getPadding: () => {
+	getPadding: (opts?: { nativeOnly?: boolean; cascading?: boolean }) => {
 		let padding = "__initial__" as StyleValue;
 		blockController.getSelectedBlocks().forEach((block) => {
+			const val = block.getPadding(opts);
 			if (padding === "__initial__") {
-				padding = block.getPadding();
-			} else if (padding !== block.getPadding()) {
+				padding = val;
+			} else if (padding !== val) {
 				padding = "Mixed";
 			}
 		});
@@ -238,12 +253,13 @@ const blockController = {
 			block.setPadding(value);
 		});
 	},
-	getMargin: () => {
+	getMargin: (opts?: { nativeOnly?: boolean; cascading?: boolean }) => {
 		let margin = "__initial__" as StyleValue;
 		blockController.getSelectedBlocks().forEach((block) => {
+			const val = block.getMargin(opts);
 			if (margin === "__initial__") {
-				margin = block.getMargin();
-			} else if (margin !== block.getMargin()) {
+				margin = val;
+			} else if (margin !== val) {
 				margin = "Mixed";
 			}
 		});
@@ -255,7 +271,7 @@ const blockController = {
 		});
 	},
 	toggleAttribute: (attribute: string) => {
-		store.activeCanvas?.selectedBlocks.forEach((block) => {
+		canvasStore.activeCanvas?.selectedBlocks.forEach((block) => {
 			if (block.getAttribute(attribute) !== undefined) {
 				block.removeAttribute(attribute);
 			} else {
@@ -263,23 +279,22 @@ const blockController = {
 			}
 		});
 	},
-	convertToLink: () => {
-		blockController.getSelectedBlocks().forEach((block: Block) => {
+	convertToLink: async () => {
+		const blocks = blockController.getSelectedBlocks();
+		for (const block of blocks) {
 			if (block.isSVG() || block.isImage()) {
 				const parentBlock = block.getParentBlock();
-				if (!parentBlock) return;
+				if (!parentBlock) continue;
 				const newBlockObj = getBlockTemplate("fit-container");
 				const newBlock = parentBlock.addChild(newBlockObj, parentBlock.getChildIndex(block));
 				newBlock.addChild(block);
 				parentBlock.removeChild(block);
-				newBlock.convertToLink();
-				nextTick(() => {
-					newBlock.selectBlock();
-				});
+				await newBlock.convertToLink();
+				newBlock.selectBlock();
 			} else {
-				block.convertToLink();
+				await block.convertToLink();
 			}
-		});
+		}
 	},
 	unsetLink: () => {
 		blockController.getSelectedBlocks().forEach((block) => {

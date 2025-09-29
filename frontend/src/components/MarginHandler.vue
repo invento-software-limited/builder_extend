@@ -113,32 +113,23 @@
 	</div>
 </template>
 <script setup lang="ts">
+import type Block from "@/block";
 import { clamp } from "@vueuse/core";
 import { computed, inject, ref, watchEffect } from "vue";
-import Block from "../utils/block";
 import { getNumberFromPx } from "../utils/helpers";
-const props = defineProps({
-	targetBlock: {
-		type: Block,
-		required: true,
+const props = withDefaults(
+	defineProps<{
+		targetBlock: Block;
+		target: HTMLElement | SVGElement;
+		disableHandlers?: boolean;
+		onUpdate?: () => void;
+		breakpoint?: string;
+	}>(),
+	{
+		disableHandlers: false,
+		breakpoint: "desktop",
 	},
-	target: {
-		type: [HTMLElement, SVGElement],
-		required: true,
-	},
-	disableHandlers: {
-		type: Boolean,
-		default: false,
-	},
-	onUpdate: {
-		type: Function,
-		default: null,
-	},
-	breakpoint: {
-		type: String,
-		default: "desktop",
-	},
-});
+);
 
 const updating = ref(false);
 const emit = defineEmits(["update"]);
@@ -150,13 +141,15 @@ watchEffect(() => {
 });
 
 const blockStyles = computed(() => {
-	let styleObj = props.targetBlock.baseStyles;
-	if (props.breakpoint === "mobile") {
-		styleObj = { ...styleObj, ...props.targetBlock.mobileStyles };
-	} else if (props.breakpoint === "tablet") {
-		styleObj = { ...styleObj, ...props.targetBlock.tabletStyles };
+	const baseStyles = { ...props.targetBlock.baseStyles };
+	let styles = baseStyles;
+	if (props.breakpoint === "mobile" || props.breakpoint === "tablet") {
+		styles = { ...styles, ...props.targetBlock.mobileStyles };
 	}
-	return styleObj;
+	if (props.breakpoint === "tablet") {
+		styles = { ...styles, ...props.targetBlock.tabletStyles };
+	}
+	return styles;
 });
 
 const topMarginHandlerHeight = computed(() => {

@@ -1,5 +1,5 @@
 <template>
-	<Popover transition="default" placement="left" class="!block w-full" popoverClass="!min-w-fit !mr-[30px]">
+	<Popover :placement="placement" class="!block w-full" popoverClass="!min-w-fit !mr-[30px]">
 		<template #target="{ togglePopover, isOpen }">
 			<slot
 				name="target"
@@ -12,7 +12,7 @@
 				:isOpen="isOpen"></slot>
 		</template>
 		<template #body="{ close }">
-			<div ref="colorPicker" class="rounded-lg bg-surface-white p-3 shadow-lg">
+			<div ref="colorPicker" class="flex flex-col gap-2 rounded-lg bg-surface-white p-3 shadow-lg">
 				<div
 					ref="colorMap"
 					:style="{
@@ -42,7 +42,7 @@
 				</div>
 				<div
 					ref="hueMap"
-					class="relative m-auto mt-2 h-3 w-44 rounded-md"
+					class="relative m-auto h-3 w-44 rounded-md"
 					@click="setHue"
 					@mousedown.prevent="handleHueSelectorMove"
 					:style="{
@@ -66,7 +66,7 @@
 						}"></div>
 				</div>
 				<div ref="colorPalette">
-					<div class="mt-3 flex flex-wrap gap-1.5">
+					<div class="flex flex-wrap gap-1.5">
 						<div
 							v-for="color in colors"
 							:key="color"
@@ -83,19 +83,40 @@
 						<EyeDropperIcon v-if="isSupported" class="text-ink-gray-7" @click="() => open()" />
 					</div>
 				</div>
+				<Input
+					v-if="showInput"
+					type="text"
+					:modelValue="modelValue"
+					class="mt-2 w-44 text-sm"
+					placeholder="Set Color"
+					@update:modelValue="
+						(color: HashString) => {
+							if (!color) {
+								emit('update:modelValue', null);
+								return;
+							}
+							setSelectorPosition(color);
+							updateColor();
+						}
+					" />
 			</div>
 		</template>
 	</Popover>
 </template>
 <script setup lang="ts">
 import EyeDropperIcon from "@/components/Icons/EyeDropper.vue";
-import useStore from "@/store";
+import useCanvasStore from "@/stores/canvasStore";
 import { HSVToHex, HexToHSV, getRGB } from "@/utils/helpers";
+import { useBuilderVariable } from "@/utils/useBuilderVariable";
 import { clamp, useEyeDropper } from "@vueuse/core";
 import { Popover } from "frappe-ui";
-import { PropType, Ref, StyleValue, computed, nextTick, ref, watch } from "vue";
-const store = useStore();
+import { Ref, StyleValue, computed, nextTick, ref, watch } from "vue";
 
+type CSSColorValue = HashString | RGBString | `var(--${string})`;
+
+const { resolveVariableValue } = useBuilderVariable();
+
+const canvasStore = useCanvasStore();
 const hueMap = ref(null) as unknown as Ref<HTMLDivElement>;
 const colorMap = ref(null) as unknown as Ref<HTMLDivElement>;
 const hueSelector = ref(null) as unknown as Ref<HTMLDivElement>;
@@ -107,15 +128,24 @@ let currentColor = "#FFF" as HashString;
 
 const { isSupported, sRGBHex, open } = useEyeDropper();
 
-const props = defineProps({
-	modelValue: {
-		type: String as PropType<HashString | RGBString | null>,
-		default: null,
+const props = withDefaults(
+	defineProps<{
+		modelValue?: HashString | RGBString | null;
+		showInput?: boolean;
+		placement?: string;
+	}>(),
+	{
+		modelValue: null,
+		showInput: false,
+		placement: "left",
 	},
-});
+);
 
 const modelColor = computed(() => {
-	return getRGB(props.modelValue);
+	const color = props.modelValue;
+	if (!color) return null;
+	const resolvedColor = resolveVariableValue(color);
+	return getRGB(resolvedColor);
 });
 
 const emit = defineEmits(["update:modelValue"]);
@@ -135,24 +165,24 @@ if (!isSupported.value) {
 	colors.push("#B34D4D");
 }
 
-const setColorSelectorPosition = (color: HashString) => {
+const setColorSelectorPosition = (color: string) => {
 	const { width, height } = colorMap.value.getBoundingClientRect();
-	const { s, v } = HexToHSV(color);
+	const { s, v } = HexToHSV(color as HashString);
 	let x = clamp(s * width, 0, width);
 	let y = clamp((1 - v) * height, 0, height);
 	colorSelectorPosition.value = { x, y };
 };
 
-const setHueSelectorPosition = (color: HashString) => {
+const setHueSelectorPosition = (color: string) => {
 	const { width } = hueMap.value.getBoundingClientRect();
-	const { h } = HexToHSV(color);
+	const { h } = HexToHSV(color as HashString);
 	const left = (h / 360) * width;
 	hueSelectorPosition.value = { x: left, y: 0 };
 };
 
 const handleSelectorMove = (ev: MouseEvent) => {
 	setColor(ev);
-	const pauseId = store.activeCanvas?.history?.pause();
+	const pauseId = canvasStore.activeCanvas?.history?.pause();
 	const mouseMove = (mouseMoveEvent: MouseEvent) => {
 		mouseMoveEvent.preventDefault();
 		setColor(mouseMoveEvent);
@@ -163,7 +193,7 @@ const handleSelectorMove = (ev: MouseEvent) => {
 		(mouseUpEvent) => {
 			document.removeEventListener("mousemove", mouseMove);
 			mouseUpEvent.preventDefault();
-			pauseId && store.activeCanvas?.history?.resume(pauseId, true);
+			pauseId && canvasStore.activeCanvas?.history?.resume(pauseId, true);
 		},
 		{ once: true },
 	);
@@ -171,7 +201,7 @@ const handleSelectorMove = (ev: MouseEvent) => {
 
 const handleHueSelectorMove = (ev: MouseEvent) => {
 	setHue(ev);
-	const pauseId = store.activeCanvas?.history?.pause();
+	const pauseId = canvasStore.activeCanvas?.history?.pause();
 	const mouseMove = (mouseMoveEvent: MouseEvent) => {
 		mouseMoveEvent.preventDefault();
 		setHue(mouseMoveEvent);
@@ -182,7 +212,7 @@ const handleHueSelectorMove = (ev: MouseEvent) => {
 		(mouseUpEvent) => {
 			document.removeEventListener("mousemove", mouseMove);
 			mouseUpEvent.preventDefault();
-			pauseId && store.activeCanvas?.history?.resume(pauseId, true);
+			pauseId && canvasStore.activeCanvas?.history?.resume(pauseId, true);
 		},
 		{ once: true },
 	);
@@ -217,9 +247,10 @@ function setSelectorPosition(color: HashString | null) {
 		hueSelectorPosition.value = { x: 0, y: 0 };
 		return;
 	}
+	const resolvedColor = resolveVariableValue(color);
 	nextTick(() => {
-		setColorSelectorPosition(color);
-		setHueSelectorPosition(color);
+		setColorSelectorPosition(resolvedColor);
+		setHueSelectorPosition(resolvedColor);
 	});
 }
 

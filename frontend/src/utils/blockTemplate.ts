@@ -8,6 +8,7 @@ function getBlockTemplate(
 		| "fit-container"
 		| "missing-component"
 		| "loading-component"
+		| "empty-component"
 		| "repeater"
 		| "video",
 ): BlockOptions {
@@ -108,6 +109,15 @@ function getBlockTemplate(
 					width: "fit-content",
 				} as BlockStyleMap,
 			};
+		case "empty-component":
+			return {
+				name: "HTML",
+				element: "div",
+				baseStyles: {
+					height: "100px",
+					width: "100px",
+				} as BlockStyleMap,
+			};
 		case "repeater":
 			return {
 				name: "Repeater",
@@ -118,7 +128,6 @@ function getBlockTemplate(
 					flexDirection: "column",
 					width: "100%",
 					flexShrink: 0,
-					minHeight: "300px",
 					overflow: "hidden",
 				} as BlockStyleMap,
 				isRepeaterBlock: true,

@@ -8,9 +8,12 @@
 		<UseDark attribute="data-theme"></UseDark>
 		<Toaster :theme="isDark ? 'dark' : 'light'" richColors />
 		<Dialogs></Dialogs>
+		<component v-for="dialog in builderStore.appDialogs" :is="dialog"></component>
 	</div>
 </template>
 <script setup lang="ts">
+import useBuilderStore from "@/stores/builderStore";
+import usePageStore from "@/stores/pageStore";
 import { UseDark } from "@vueuse/components";
 import { useDark, useTitle } from "@vueuse/core";
 import { Dialogs } from "frappe-ui";
@@ -18,24 +21,24 @@ import { computed, provide } from "vue";
 import { useRoute } from "vue-router";
 import { Toaster } from "vue-sonner";
 import { sessionUser } from "./router";
-import useStore from "./store";
 
-const store = useStore();
+// do not remove this
+const builderStore = useBuilderStore();
+const pageStore = usePageStore();
 const route = useRoute();
+const isDark = useDark({
+	attribute: "data-theme",
+});
 
 provide("sessionUser", sessionUser);
 
 const title = computed(() => {
-	return store.activePage && route.name !== "home"
-		? `${store.activePage.page_title || "Untitled"} | Builder`
+	return pageStore.activePage && route.name !== "home"
+		? `${pageStore.activePage.page_title || "Untitled"} | Builder`
 		: "Frappe Builder";
 });
 
 useTitle(title);
-
-const isDark = useDark({
-	attribute: "data-theme",
-});
 </script>
 <style>
 [id^="headlessui-dialog"] {
@@ -81,7 +84,7 @@ const isDark = useDark({
 [id^="headlessui-menu-items"],
 [id^="headlessui-combobox-options"] {
 	@apply bg-surface-white;
-	@apply dark:bg-surface-gray-1;
+	@apply dark:bg-surface-gray-2;
 	@apply text-ink-gray-7;
 
 	@apply overflow-y-auto;
@@ -130,5 +133,19 @@ const isDark = useDark({
 	@apply bg-surface-white;
 	@apply dark:border-gray-800;
 	@apply !text-base;
+}
+
+[id^="headlessui-menu-items"] {
+	@apply min-w-28;
+	@apply rounded-md;
+}
+[id^="headlessui-menu-item"] {
+	@apply text-base;
+}
+[id^="headlessui-menu-item"] button {
+	@apply rounded;
+}
+[id^="headlessui-menu-item"] svg {
+	@apply size-3;
 }
 </style>

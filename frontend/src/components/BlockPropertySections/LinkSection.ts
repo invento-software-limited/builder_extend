@@ -1,52 +1,61 @@
-import InlineInput from "@/components/Controls/InlineInput.vue";
-import { webPages } from "@/data/webPage";
-import { BuilderPage } from "@/types/Builder/BuilderPage";
 import blockController from "@/utils/blockController";
-import { computed, nextTick } from "vue";
+import { computed } from "vue";
+import PropertyControl from "../Controls/PropertyControl.vue";
 
 const linkSectionProperties = [
 	{
-		component: InlineInput,
+		component: PropertyControl,
 		getProps: () => {
 			return {
 				label: "Link To",
-				type: "autocomplete",
-				showInputAsOption: true,
-				options: (webPages.data || [])
-					.filter((page: BuilderPage) => {
-						return page.route && !page.dynamic_route;
-					})
-					.map((page: BuilderPage) => {
-						return {
-							value: `/${page.route}`,
-							label: `/${page.route}`,
-						};
-					}),
-				modelValue: blockController.getAttribute("href"),
+				styleProperty: "href",
+				enableStates: false,
+				allowDynamicValue: true,
+				controlType: "attribute",
+				getModelValue: () => blockController.getAttribute("href"),
+				setModelValue: async (val: string) => {
+					if (val && !blockController.isLink()) {
+						await blockController.convertToLink();
+					}
+					if (!val && blockController.isLink()) {
+						blockController.unsetLink();
+					} else {
+						blockController.setAttribute("href", val);
+					}
+				},
 			};
 		},
 		searchKeyWords: "Link, Href, URL",
 		events: {
-			"update:modelValue": async (val: string) => {
-				if (val && !blockController.isLink()) {
+			setDynamicValue: () => {
+				if (!blockController.isLink()) {
 					blockController.convertToLink();
-					await nextTick();
-					await nextTick();
 				}
-				if (!val && blockController.isLink()) {
+			},
+			clearDynamicValue: () => {
+				if (blockController.isLink() && !blockController.getAttribute("href")) {
 					blockController.unsetLink();
-				} else {
-					blockController.setAttribute("href", val);
 				}
 			},
 		},
 	},
 	{
-		component: InlineInput,
+		component: PropertyControl,
 		getProps: () => {
 			return {
 				label: "Opens in",
+				controlType: "attribute",
 				type: "select",
+				styleProperty: "target",
+				allowDynamicValue: false,
+				getModelValue: () => blockController.getAttribute("target") || "_self",
+				setModelValue: (val: string) => {
+					if (val === "_self") {
+						blockController.removeAttribute("target");
+					} else {
+						blockController.setAttribute("target", val);
+					}
+				},
 				options: [
 					{
 						value: "_self",
@@ -57,19 +66,9 @@ const linkSectionProperties = [
 						label: "New Tab",
 					},
 				],
-				modelValue: blockController.getAttribute("target") || "_self",
 			};
 		},
 		searchKeyWords: "Link, Target, Opens in, OpensIn, Opens In, New Tab",
-		events: {
-			"update:modelValue": (val: string) => {
-				if (val === "_self") {
-					blockController.removeAttribute("target");
-				} else {
-					blockController.setAttribute("target", val);
-				}
-			},
-		},
 		condition: () => blockController.getAttribute("href"),
 	},
 ];
@@ -78,5 +77,8 @@ export default {
 	name: "Link",
 	properties: linkSectionProperties,
 	collapsed: computed(() => !blockController.isLink()),
-	condition: () => !blockController.multipleBlocksSelected(),
+	condition: () =>
+		!blockController.multipleBlocksSelected() &&
+		!blockController.getSelectedBlocks()[0].parentBlock?.isLink() &&
+		!blockController.isHTML(),
 };

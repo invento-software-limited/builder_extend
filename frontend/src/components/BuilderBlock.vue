@@ -8,7 +8,6 @@
 		:class="classes"
 		v-bind="attributes"
 		:style="styles"
-		v-if="showBlock"
 		ref="component">
 		<BuilderBlock
 			:data="data"
@@ -17,7 +16,7 @@
 			:preview="preview"
 			:isChildOfComponent="block.isExtendedFromComponent() || isChildOfComponent"
 			:key="child.blockId"
-			v-for="child in block.getChildren()" />
+			v-for="child in block.getChildren().filter((child) => child.isVisible(breakpoint))" />
 	</component>
 	<teleport to="#overlay" v-if="canvasProps?.overlayElement && !preview && Boolean(canvasProps)">
 		<!-- prettier-ignore -->
@@ -33,45 +32,37 @@
 	</teleport>
 </template>
 <script setup lang="ts">
-import Block from "@/utils/block";
+import type Block from "@/block";
+import useCanvasStore from "@/stores/canvasStore";
 import { setFont } from "@/utils/fontManager";
-import { computed, inject, nextTick, onMounted, reactive, ref, useAttrs, watch, watchEffect } from "vue";
-
 import { getDataForKey } from "@/utils/helpers";
 import { useDraggableBlock } from "@/utils/useDraggableBlock";
-import useStore from "../store";
+import { computed, inject, nextTick, onMounted, reactive, ref, useAttrs, watch, watchEffect } from "vue";
 import BlockEditor from "./BlockEditor.vue";
 import BlockHTML from "./BlockHTML.vue";
 import DataLoaderBlock from "./DataLoaderBlock.vue";
 import TextBlock from "./TextBlock.vue";
 
+const canvasStore = useCanvasStore();
 const component = ref<HTMLElement | InstanceType<typeof TextBlock> | null>(null);
 const attrs = useAttrs();
-const store = useStore();
 const editor = ref<InstanceType<typeof BlockEditor> | null>(null);
 
-const props = defineProps({
-	block: {
-		type: Block,
-		required: true,
+const props = withDefaults(
+	defineProps<{
+		block: Block;
+		isChildOfComponent?: boolean;
+		breakpoint?: string;
+		preview?: boolean;
+		data?: Record<string, any> | null;
+	}>(),
+	{
+		isChildOfComponent: false,
+		breakpoint: "desktop",
+		preview: false,
+		data: null,
 	},
-	isChildOfComponent: {
-		type: Boolean,
-		default: false,
-	},
-	breakpoint: {
-		type: String,
-		default: "desktop",
-	},
-	preview: {
-		type: Boolean,
-		default: false,
-	},
-	data: {
-		type: Object,
-		default: null,
-	},
-});
+);
 
 defineOptions({
 	inheritAttrs: false,
@@ -99,7 +90,14 @@ const getComponentName = (block: Block) => {
 };
 
 const classes = computed(() => {
-	return [attrs.class, "__builder_component__", "outline-none", "select-none", ...props.block.getClasses()];
+	return [
+		attrs.class,
+		"__builder_component__",
+		"outline-none",
+		"select-none",
+		...props.block.getClasses(),
+		hiddenDueToVisibilityCondition.value ? "opacity-10" : "",
+	];
 });
 
 const attributes = computed(() => {
@@ -120,9 +118,18 @@ const attributes = computed(() => {
 	if (props.data) {
 		if (props.block.getDataKey("type") === "attribute") {
 			attribs[props.block.getDataKey("property") as string] =
-				getDataForKey(props.data, props.block.getDataKey("key")) ||
+				getDataForKey(props.data, props.block.getDataKey("key")) ??
 				attribs[props.block.getDataKey("property") as string];
 		}
+		props.block.dynamicValues
+			?.filter((dataKeyObj: BlockDataKey) => {
+				return dataKeyObj.type === "attribute";
+			})
+			?.forEach((dataKeyObj: BlockDataKey) => {
+				const property = dataKeyObj.property as string;
+				attribs[property] =
+					getDataForKey(props.data as Object, dataKeyObj.key as string) ?? attribs[property];
+			});
 	}
 
 	if (props.block.isInput()) {
@@ -143,7 +150,7 @@ const target = computed(() => {
 });
 
 const styles = computed(() => {
-	let dynamicStyles = {};
+	let dynamicStyles = {} as { [key: string]: string };
 	if (props.data) {
 		if (props.block.getDataKey("type") === "style") {
 			dynamicStyles = {
@@ -153,6 +160,14 @@ const styles = computed(() => {
 				),
 			};
 		}
+		props.block.dynamicValues
+			?.filter((dataKeyObj: BlockDataKey) => {
+				return dataKeyObj.type === "style";
+			})
+			?.forEach((dataKeyObj: BlockDataKey) => {
+				const property = dataKeyObj.property as string;
+				dynamicStyles[property] = getDataForKey(props.data as Object, dataKeyObj.key as string);
+			});
 	}
 
 	const styleMap = {
@@ -160,10 +175,40 @@ const styles = computed(() => {
 		...props.block.getEditorStyles(),
 		...dynamicStyles,
 	} as BlockStyleMap;
+
+	if (props.block.activeState) {
+		const [state, property] = props.block.activeState.split(":");
+
+		if (canvasStore.activeCanvas?.activeBreakpoint === props.breakpoint) {
+			const stateStyles = props.block.getStateStyles(state, props.breakpoint);
+			if (stateStyles) {
+				Object.keys(stateStyles).forEach((key) => {
+					if (key === property) {
+						styleMap[key] = stateStyles[key];
+					}
+				});
+			}
+		}
+	}
+
 	// escape space in font family
-	if (styleMap.fontFamily) {
+	if (styleMap.fontFamily && typeof styleMap.fontFamily === "string") {
 		styleMap.fontFamily = (styleMap.fontFamily as string).replace(/ /g, "\\ ");
 	}
+
+	Object.keys(styleMap).forEach((key) => {
+		if (key.startsWith("hover:")) {
+			// state style preview on hover
+			// if (!isHovered.value) {
+			// 	delete styleMap[key];
+			// } else {
+			// 	styleMap[key.replace("hover:", "")] = styleMap[key];
+			// 	delete styleMap[key];
+			// }
+			delete styleMap[key];
+		}
+	});
+
 	return styleMap;
 });
 
@@ -171,8 +216,8 @@ const loadEditor = computed(() => {
 	return (
 		target.value &&
 		props.block.getStyle("display") !== "none" &&
-		((isSelected.value && props.breakpoint === store.activeBreakpoint) ||
-			(isHovered.value && store.hoveredBreakpoint === props.breakpoint)) &&
+		((isSelected.value && props.breakpoint === canvasStore.activeCanvas?.activeBreakpoint) ||
+			(isHovered.value && canvasStore.activeCanvas?.hoveredBreakpoint === props.breakpoint)) &&
 		!canvasProps?.scaling &&
 		!canvasProps?.panning
 	);
@@ -199,32 +244,21 @@ onMounted(async () => {
 
 const isEditable = computed(() => {
 	// to ensure it is right block and not on different breakpoint
-	return store.editableBlock === props.block && store.activeBreakpoint === props.breakpoint;
+	return (
+		canvasStore.editableBlock === props.block &&
+		canvasStore.activeCanvas?.activeBreakpoint === props.breakpoint
+	);
 });
 
-const selectBlock = (e: MouseEvent | null) => {
-	if (store.editableBlock === props.block || store.mode !== "select" || props.preview) {
-		return;
-	}
-	store.selectBlock(props.block, e);
-	store.activeBreakpoint = props.breakpoint;
-
-	if (!props.preview) {
-		store.leftPanelActiveTab = "Layers";
-		store.rightPanelActiveTab = "Properties";
-	}
-};
-
-const showBlock = computed(() => {
-	// const data = props.block.getVisibilityCondition()
-	// 	? getDataForKey(props.data, props.block.getVisibilityCondition() as string)
-	// 	: true;
-	return true;
+const hiddenDueToVisibilityCondition = computed(() => {
+	return props.block.getVisibilityCondition()
+		? !Boolean(getDataForKey(props.data || {}, props.block.getVisibilityCondition() as string))
+		: false;
 });
 
 if (!props.preview) {
 	watch(
-		() => store.hoveredBlock,
+		() => canvasStore.activeCanvas?.hoveredBlock,
 		(newValue, oldValue) => {
 			if (newValue === props.block.blockId) {
 				isHovered.value = true;
@@ -234,9 +268,9 @@ if (!props.preview) {
 		},
 	);
 	watch(
-		() => store.activeCanvas?.selectedBlockIds,
+		() => canvasStore.activeCanvas?.selectedBlockIds,
 		() => {
-			if (store.activeCanvas?.isSelected(props.block)) {
+			if (canvasStore.activeCanvas?.isSelected(props.block)) {
 				isSelected.value = true;
 			} else {
 				isSelected.value = false;

@@ -1,120 +1,35 @@
 <template>
-	<div class="flex h-screen flex-col">
+	<div class="flex h-screen">
 		<!-- toolbar -->
-		<div
-			class="toolbar sticky top-0 z-10 flex h-12 items-center justify-between border-b-[1px] border-outline-gray-1 bg-surface-white p-2 px-3 py-1"
-			ref="toolbar">
-			<div>
-				<Dialog
-					v-model="showSettingsDialog"
-					style="z-index: 40"
-					class="[&>div>div[id^=headlessui-dialog-panel]]:my-3"
-					:options="{
-						title: 'Settings',
-						size: '5xl',
-					}">
-					<template #body>
-						<Settings @close="showSettingsDialog = false" :onlyGlobal="true"></Settings>
-					</template>
-				</Dialog>
-				<div class="flex items-center">
-					<Dropdown
-						:options="[
-							{
-								group: 'Builder',
-								hideLabel: true,
-								items: [
-									{
-										label: 'New Page',
-										onClick: () => $router.push({ name: 'builder', params: { pageId: 'new' } }),
-										icon: 'plus',
-									},
-								],
-							},
-							{
-								group: 'Options',
-								hideLabel: true,
-								items: [
-									{
-										label: 'Apps',
-										component: AppsMenu,
-										icon: 'grid',
-									},
-									{
-										label: 'Toggle Theme',
-										onClick: () => toggleDark(),
-										icon: isDark ? 'sun' : 'moon',
-									},
-									{
-										label: 'Toggle Sidebar',
-										onClick: () => (store.showDashboardSidebar = !store.showDashboardSidebar),
-										icon: 'sidebar',
-									},
-									{
-										label: 'Settings',
-										onClick: () => (showSettingsDialog = true),
-										icon: 'settings',
-									},
-								],
-							},
-							{
-								group: 'Help',
-								hideLabel: true,
-								items: [
-									{
-										label: 'Help',
-										onClick: () => {
-											// @ts-ignore
-											window.open('https://t.me/frappebuilder');
-										},
-										icon: 'info',
-									},
-								],
-							},
-						]"
-						size="sm"
-						class="flex-1 [&>div>div>div]:w-full"
-						placement="right">
-						<template v-slot="{ open }">
-							<div class="flex cursor-pointer items-center gap-2">
-								<img src="/builder_logo.png" alt="logo" class="h-7" />
-								<h1 class="text-md mt-[2px] font-semibold leading-5 text-gray-800 dark:text-gray-200">
-									Builder
-								</h1>
-								<FeatherIcon
-									:name="open ? 'chevron-up' : 'chevron-down'"
-									class="h-4 w-4 !text-gray-700 dark:!text-gray-200"></FeatherIcon>
-							</div>
-						</template>
-					</Dropdown>
-				</div>
+		<DashboardSidebar class="z-30"></DashboardSidebar>
+		<div class="flex w-full flex-1 flex-col overflow-hidden">
+			<div
+				class="toolbar sticky top-0 z-10 flex h-12 items-center justify-end border-b-[1px] border-outline-gray-1 bg-surface-white p-2 px-3 py-1"
+				ref="toolbar">
+				<router-link
+					:to="{ name: 'builder', params: { pageId: 'new' } }"
+					@click="
+						() => {
+							posthog.capture('builder_new_page_created');
+						}
+					">
+					<BuilderButton
+						variant="solid"
+						iconLeft="plus"
+						class="bg-surface-gray-7 !text-ink-white hover:bg-surface-gray-6">
+						New
+					</BuilderButton>
+				</router-link>
 			</div>
-			<router-link
-				:to="{ name: 'builder', params: { pageId: 'new' } }"
-				@click="
-					() => {
-						posthog.capture('builder_new_page_created');
-					}
-				">
-				<BuilderButton
-					variant="solid"
-					iconLeft="plus"
-					class="bg-surface-gray-7 !text-ink-white hover:bg-surface-gray-6">
-					New
-				</BuilderButton>
-			</router-link>
-		</div>
-		<div class="flex w-full flex-1 overflow-hidden">
 			<!-- Sidebar -->
-			<DashboardSidebar
-				v-show="store.showDashboardSidebar"
-				@openSettings="showSettingsDialog = true"></DashboardSidebar>
 			<!-- Main Content -->
 			<div class="flex-1 overflow-auto">
 				<section class="m-auto mb-32 flex h-fit w-3/4 max-w-6xl flex-col pt-5">
 					<!-- list head -->
 					<div class="sticky top-0 z-20 mb-8 flex items-center justify-between bg-surface-white px-3 py-5">
-						<h1 class="text-xl font-semibold text-ink-gray-9">{{ store.activeFolder || "All Pages" }}</h1>
+						<h1 class="text-xl font-semibold text-ink-gray-9">
+							{{ builderStore.activeFolder || "All Pages" }}
+						</h1>
 						<div class="flex gap-2">
 							<div>
 								<BuilderButton
@@ -162,16 +77,32 @@
 										{ label: 'Sort', value: '', disabled: true },
 										{ label: 'Last Created', value: 'creation' },
 										{ label: 'Last Modified', value: 'modified' },
-										{ label: 'Alphabetically (A-Z)', value: 'alphabetically_a_z' },
-										{ label: 'Alphabetically (Z-A)', value: 'alphabetically_z_a' },
+										{
+											label: 'Alphabetically (A-Z)',
+											value: 'alphabetically_a_z',
+										},
+										{
+											label: 'Alphabetically (Z-A)',
+											value: 'alphabetically_z_a',
+										},
 									]" />
 							</div>
 							<div class="max-md:hidden">
 								<OptionToggle
 									class="[&>div]:min-w-0"
 									:options="[
-										{ label: 'Grid', value: 'grid', icon: 'grid', hideLabel: true },
-										{ label: 'List', value: 'list', icon: 'list', hideLabel: true },
+										{
+											label: 'Grid',
+											value: 'grid',
+											icon: 'grid',
+											hideLabel: true,
+										},
+										{
+											label: 'List',
+											value: 'list',
+											icon: 'list',
+											hideLabel: true,
+										},
 									]"
 									v-model="displayType"></OptionToggle>
 							</div>
@@ -221,33 +152,30 @@
 		</div>
 		<SelectFolder
 			v-model="showFolderSelectorDialog"
-			:currentFolder="store.activeFolder"
+			:currentFolder="builderStore.activeFolder"
 			@folderSelected="setFolder"></SelectFolder>
 	</div>
 </template>
 <script setup lang="ts">
-import AppsMenu from "@/components/AppsMenu.vue";
 import OptionToggle from "@/components/Controls/OptionToggle.vue";
 import DashboardSidebar from "@/components/DashboardSidebar.vue";
 import SelectFolder from "@/components/Modals/SelectFolder.vue";
 import PageCard from "@/components/PageCard.vue";
 import PageListItem from "@/components/PageListItem.vue";
-import Settings from "@/components/Settings.vue";
 import { webPages } from "@/data/webPage";
 import vOnClickAndHold from "@/directives/vOnClickAndHold";
-import useStore from "@/store";
+import useBuilderStore from "@/stores/builderStore";
 import { posthog } from "@/telemetry";
 import { BuilderPage } from "@/types/Builder/BuilderPage";
 import { useDark, useEventListener, useStorage, useToggle, watchDebounced } from "@vueuse/core";
-import { createResource, Dropdown } from "frappe-ui";
-import Dialog from "@/components/Controls/Dialog.vue";
+import { createResource } from "frappe-ui";
 import { onActivated, Ref, ref, watch } from "vue";
 
 const isDark = useDark({
 	attribute: "data-theme",
 });
 const toggleDark = useToggle(isDark);
-const store = useStore();
+const builderStore = useBuilderStore();
 const displayType = useStorage("displayType", "grid") as Ref<"grid" | "list">;
 const showFolderSelectorDialog = ref(false);
 
@@ -272,7 +200,7 @@ onActivated(() => {
 });
 
 watch(
-	() => store.activeFolder,
+	() => builderStore.activeFolder,
 	() => fetchPages(),
 );
 
@@ -302,8 +230,8 @@ const fetchPages = () => {
 		orFilters["page_title"] = ["like", `%${searchFilter.value}%`];
 		orFilters["route"] = ["like", `%${searchFilter.value}%`];
 	}
-	if (store.activeFolder) {
-		filters["project_folder"] = store.activeFolder;
+	if (builderStore.activeFolder) {
+		filters["project_folder"] = builderStore.activeFolder;
 	}
 
 	webPages.update({
@@ -397,7 +325,7 @@ const setFolder = async (folder: string) => {
 			selectedPages.value.clear();
 			selectionMode.value = false;
 			showFolderSelectorDialog.value = false;
-			store.activeFolder = folder;
+			builderStore.activeFolder = folder;
 		});
 };
 

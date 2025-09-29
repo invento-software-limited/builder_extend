@@ -1,9 +1,13 @@
+import Block from "@/block";
 import AlertDialog from "@/components/AlertDialog.vue";
-import useStore from "@/store";
+import useBuilderStore from "@/stores/builderStore";
+import useCanvasStore from "@/stores/canvasStore";
+import { BuilderPage } from "@/types/Builder/BuilderPage";
+import getBlockTemplate from "@/utils/blockTemplate";
 import { confirmDialog, FileUploadHandler } from "frappe-ui";
-import { h, reactive, toRaw } from "vue";
+import { defineComponent, h, markRaw, reactive, ref, toRaw } from "vue";
 import { toast } from "vue-sonner";
-import Block from "./block";
+import Dialog from "../components/Controls/Dialog.vue";
 
 function getNumberFromPx(px: string | number | null | undefined): number {
 	if (!px) {
@@ -25,25 +29,45 @@ function addPxToNumber(number: number, round: boolean = true): string {
 }
 
 function HexToHSV(color: HashString): { h: number; s: number; v: number } {
-	const [r, g, b] = color
-		.replace("#", "")
-		.match(/.{1,2}/g)
-		?.map((x) => parseInt(x, 16)) || [0, 0, 0];
+	// Remove hash and normalize length
+	let hex = color.replace("#", "").trim();
+
+	// Expand short hex (#abc -> #aabbcc)
+	if (hex.length === 3) {
+		hex = hex
+			.split("")
+			.map((c) => c + c)
+			.join("");
+	}
+
+	// If not valid hex, return black
+	if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
+		return { h: 0, s: 0, v: 0 };
+	}
+
+	const r = parseInt(hex.slice(0, 2), 16);
+	const g = parseInt(hex.slice(2, 4), 16);
+	const b = parseInt(hex.slice(4, 6), 16);
 
 	const max = Math.max(r, g, b);
 	const min = Math.min(r, g, b);
 	const v = max / 255;
 	const d = max - min;
 	const s = max === 0 ? 0 : d / max;
-	const h =
-		max === min
-			? 0
-			: max === r
-			? (g - b) / d + (g < b ? 6 : 0)
-			: max === g
-			? (b - r) / d + 2
-			: (r - g) / d + 4;
-	return { h: h * 60, s, v };
+
+	let h = 0;
+	if (d !== 0) {
+		if (max === r) {
+			h = (g - b) / d + (g < b ? 6 : 0);
+		} else if (max === g) {
+			h = (b - r) / d + 2;
+		} else {
+			h = (r - g) / d + 4;
+		}
+		h *= 60;
+	}
+
+	return { h, s, v };
 }
 
 function HSVToHex(h: number, s: number, v: number): HashString {
@@ -112,7 +136,7 @@ async function alert(message: string, title: string = "Alert"): Promise<boolean>
 		h(AlertDialog, {
 			title,
 			message,
-			onClick: resolve,
+			onClick: () => resolve(true),
 		});
 	});
 }
@@ -202,6 +226,14 @@ function kebabToCamelCase(str: string) {
 	});
 }
 
+function toKebabCase(str: string) {
+	return str
+		.replace(/([a-z])([A-Z])/g, "$1-$2")
+		.replace(/([A-Z])([A-Z][a-z])/g, "$1-$2")
+		.toLowerCase()
+		.replace(/\s+/g, "-");
+}
+
 function isJSONString(str: string) {
 	try {
 		JSON.parse(str);
@@ -217,9 +249,16 @@ function isTargetEditable(e: Event) {
 	const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
 	return isEditable || isInput;
 }
+
 function getDataForKey(datum: Object, key: string) {
 	const data = Object.assign({}, datum);
-	return key.split(".").reduce((d, key) => (d ? d[key] : null), data) as string;
+	const value = key
+		.split(".")
+		.reduce(
+			(d: Record<string, any> | null, key) => (d && typeof d === "object" ? d[key] : null),
+			data as Record<string, any>,
+		);
+	return value;
 }
 
 function replaceMapKey(map: Map<any, any>, oldKey: string, newKey: string) {
@@ -236,7 +275,7 @@ function replaceMapKey(map: Map<any, any>, oldKey: string, newKey: string) {
 
 const mapToObject = (map: Map<any, any>) => Object.fromEntries(map.entries());
 
-function logObjectDiff(obj1: { [key: string]: {} }, obj2: { [key: string]: {} }, path = []) {
+function logObjectDiff(obj1: Record<string, any>, obj2: Record<string, any>, path: string[] = []) {
 	if (!obj1 || !obj2) return;
 	for (const key in obj1) {
 		const newPath = path.concat(key);
@@ -363,7 +402,6 @@ async function uploadImage(file: File, silent = false) {
 	const upload = uploader.upload(file, {
 		private: false,
 		folder: "Home/Builder Uploads",
-		optimize: true,
 		upload_endpoint: "/api/method/builder.api.upload_builder_asset",
 	});
 	await new Promise((resolve) => {
@@ -415,6 +453,7 @@ declare global {
 	interface Window {
 		Module: {
 			decompress: (arrayBuffer: ArrayBuffer) => Uint8Array;
+			onRuntimeInitialized?: () => void;
 		};
 	}
 }
@@ -428,10 +467,11 @@ async function getFontArrayBuffer(file_url: string) {
 			);
 		if (!window.Module) {
 			const path = "https://unpkg.com/wawoff2@2.0.1/build/decompress_binding.js";
+			// @ts-ignore
 			const init = new Promise((done) => (window.Module = { onRuntimeInitialized: done }));
 			await loadScript(path).then(() => init);
 		}
-		return Uint8Array.from(Module.decompress(arrayBuffer)).buffer;
+		return Uint8Array.from(window.Module.decompress(arrayBuffer)).buffer;
 	}
 	return arrayBuffer;
 }
@@ -471,7 +511,10 @@ function throttle<T extends (...args: any[]) => void>(func: T, wait: number = 10
 }
 
 function isBlock(e: MouseEvent) {
-	return e.target instanceof HTMLElement && e.target.closest(".__builder_component__");
+	return (
+		(e.target instanceof HTMLElement || e.target instanceof SVGElement) &&
+		e.target.closest(".__builder_component__")
+	);
 }
 
 type BlockInfo = {
@@ -485,11 +528,374 @@ function getBlockInfo(e: MouseEvent) {
 }
 
 function getBlock(e: MouseEvent) {
-	const store = useStore();
+	const canvasStore = useCanvasStore();
 	const blockInfo = getBlockInfo(e);
-	return store.activeCanvas?.findBlock(blockInfo.blockId);
+	return canvasStore.activeCanvas?.findBlock(blockInfo.blockId);
 }
 
+function getRootBlockTemplate() {
+	return getBlockInstance(getBlockTemplate("body"));
+}
+
+function getImageBlock(imageSrc: string, imageAlt: string = "") {
+	const imageBlock = getBlockTemplate("image");
+	if (!imageBlock.attributes) {
+		imageBlock.attributes = {};
+	}
+	imageBlock.attributes.src = imageSrc;
+	return imageBlock;
+}
+
+function getVideoBlock(videoSrc: string) {
+	const videoBlock = getBlockTemplate("video");
+	if (!videoBlock.attributes) {
+		videoBlock.attributes = {};
+	}
+	videoBlock.attributes.src = videoSrc;
+	return videoBlock;
+}
+
+function openInDesk(page: BuilderPage) {
+	window.open(`/app/builder-page/${page.page_name}`, "_blank");
+}
+
+interface BackgroundValue {
+	image?: string;
+	position?: string;
+	size?: string;
+	repeat?: string;
+	attachment?: string;
+	origin?: string;
+	clip?: string;
+	color?: string;
+}
+
+// Based on WebKit and Gecko parsing implementations
+function parseBackground(cssText: string): BackgroundValue {
+	if (!cssText || typeof cssText !== "string") {
+		return {};
+	}
+
+	// Tokenize the input preserving quoted strings and functions
+	function tokenize(input: string): string[] {
+		const tokens: string[] = [];
+		let current = "";
+		let parenDepth = 0;
+		let inQuote: string | null = null;
+
+		for (let i = 0; i < input.length; i++) {
+			const char = input[i];
+
+			if (inQuote) {
+				current += char;
+				if (char === inQuote && input[i - 1] !== "\\") {
+					inQuote = null;
+				}
+				continue;
+			}
+
+			if (char === '"' || char === "'") {
+				current += char;
+				inQuote = char;
+				continue;
+			}
+
+			if (char === "(") {
+				parenDepth++;
+				current += char;
+				continue;
+			}
+
+			if (char === ")") {
+				parenDepth--;
+				current += char;
+				continue;
+			}
+
+			if (parenDepth > 0) {
+				current += char;
+				continue;
+			}
+
+			if (char === " " || char === "\t" || char === "\n") {
+				if (current) {
+					tokens.push(current);
+					current = "";
+				}
+				continue;
+			}
+
+			current += char;
+		}
+
+		if (current) {
+			tokens.push(current);
+		}
+
+		return tokens;
+	}
+
+	// Parse color value
+	function isColor(value: string): boolean {
+		return (
+			/^(#|rgb|hsl|[a-z]+$)/.test(value) &&
+			!["center", "top", "bottom", "left", "right", "fixed", "local", "scroll", "contain", "repeat"].includes(
+				value,
+			)
+		);
+	}
+
+	// Parse position values
+	function isPosition(value: string): boolean {
+		return /^(center|top|bottom|left|right|[-\d.]+(%|px|em|rem|vh|vw)?)$/.test(value);
+	}
+
+	// Parse size values
+	function isSize(value: string): boolean {
+		return /^(cover|contain|auto|[-\d.]+(%|px|em|rem|vh|vw)?)$/.test(value);
+	}
+
+	const result: BackgroundValue = {};
+	const tokens = tokenize(cssText.trim());
+	let i = 0;
+
+	while (i < tokens.length) {
+		const token = tokens[i];
+
+		// Handle url() and gradients
+		if (token.startsWith("url(") || token.includes("gradient")) {
+			result.image = token;
+			i++;
+			continue;
+		}
+
+		// Handle color
+		if (isColor(token)) {
+			result.color = token;
+			i++;
+			continue;
+		}
+
+		// Handle position and size
+		if (isPosition(token)) {
+			let position = [token];
+
+			// Check for second position value
+			if (i + 1 < tokens.length && isPosition(tokens[i + 1])) {
+				position.push(tokens[i + 1]);
+				i++;
+			}
+
+			result.position = position.join(" ");
+
+			// Check for size after '/'
+			if (i + 2 < tokens.length && tokens[i + 1] === "/" && isSize(tokens[i + 2])) {
+				let size = [tokens[i + 2]];
+				if (i + 3 < tokens.length && isSize(tokens[i + 3])) {
+					size.push(tokens[i + 3]);
+					i++;
+				}
+				result.size = size.join(" ");
+				i += 2;
+			}
+
+			i++;
+			continue;
+		}
+
+		// Handle repeat
+		if (/^(no-repeat|repeat(-[xy])?|round|space)$/.test(token)) {
+			result.repeat = token;
+			i++;
+			continue;
+		}
+
+		// Handle attachment
+		if (/^(fixed|local|scroll)$/.test(token)) {
+			result.attachment = token;
+			i++;
+			continue;
+		}
+
+		// Handle origin/clip
+		if (/^(border|padding|content)-box$/.test(token)) {
+			if (!result.origin) {
+				result.origin = token;
+			} else {
+				result.clip = token;
+			}
+			i++;
+			continue;
+		}
+
+		i++;
+	}
+
+	return result;
+}
+
+const parseAndSetBackground = (styles: BlockStyleMap) => {
+	if (styles.background) {
+		const { color, image, position, size, repeat } = parseBackground(styles.background as string);
+		delete styles.background;
+		if (color) styles.backgroundColor = color;
+		if (image) styles.backgroundImage = image;
+		if (position) styles.backgroundPosition = position;
+		if (size) styles.backgroundSize = size;
+		if (repeat) styles.backgroundRepeat = repeat;
+	}
+};
+
+function shortenNumber(num: number): string {
+	if (num < 1000) return num.toString();
+	const units = ["", "k", "M", "B", "T"];
+	const order = Math.floor(Math.log10(num) / 3);
+	const unitname = units[order];
+	const shortNum = num / Math.pow(1000, order);
+	return shortNum % 1 === 0 ? shortNum.toFixed(0) + unitname : shortNum.toFixed(1) + unitname;
+}
+
+function setBoxSpacing(block: Block, type: "padding" | "margin", value: string) {
+	const props = [type, `${type}Top`, `${type}Right`, `${type}Bottom`, `${type}Left`];
+	props.forEach((prop) => block.setStyle(prop, null));
+	if (!value) return;
+	const arr = value.split(" ");
+	if (arr.length === 1) {
+		block.setStyle(type, arr[0]);
+	} else if (arr.length === 2) {
+		block.setStyle(`${type}Top`, arr[0]);
+		block.setStyle(`${type}Bottom`, arr[0]);
+		block.setStyle(`${type}Left`, arr[1]);
+		block.setStyle(`${type}Right`, arr[1]);
+	} else if (arr.length === 3) {
+		block.setStyle(`${type}Top`, arr[0]);
+		block.setStyle(`${type}Left`, arr[1]);
+		block.setStyle(`${type}Right`, arr[1]);
+		block.setStyle(`${type}Bottom`, arr[2]);
+	} else if (arr.length === 4) {
+		block.setStyle(`${type}Top`, arr[0]);
+		block.setStyle(`${type}Right`, arr[1]);
+		block.setStyle(`${type}Bottom`, arr[2]);
+		block.setStyle(`${type}Left`, arr[3]);
+	}
+}
+
+function getBoxSpacing(
+	block: Block,
+	type: "padding" | "margin",
+	opts?: { nativeOnly?: boolean; cascading?: boolean },
+): string {
+	const nativeOnly = opts?.nativeOnly ?? false;
+	const cascading = opts?.cascading ?? false;
+	const base = String(block.getStyle(type, undefined, nativeOnly, cascading) ?? "0px");
+	const top = block.getStyle(`${type}Top`, undefined, nativeOnly, cascading) ?? base;
+	const bottom = block.getStyle(`${type}Bottom`, undefined, nativeOnly, cascading) ?? base;
+	const left = block.getStyle(`${type}Left`, undefined, nativeOnly, cascading) ?? base;
+	const right = block.getStyle(`${type}Right`, undefined, nativeOnly, cascading) ?? base;
+	const sTop = String(top);
+	const sBottom = String(bottom);
+	const sLeft = String(left);
+	const sRight = String(right);
+	if (sTop === base && sBottom === base && sLeft === base && sRight === base) return base;
+	if (sTop === sBottom && sTop === sRight && sTop === sLeft) return sTop;
+	if (sTop === sBottom && sLeft === sRight) return `${sTop} ${sLeft}`;
+	return `${sTop} ${sRight} ${sBottom} ${sLeft}`;
+}
+
+interface DialogAction {
+	label: string;
+	variant?: "solid" | "subtle" | "outline" | "ghost";
+	theme?: "gray" | "blue" | "green" | "red";
+	onClick?: () => void | Promise<void>;
+}
+
+interface DialogOptions {
+	title?: string;
+	message: string;
+	icon?: {
+		name: string;
+		appearance?: "warning" | "info" | "danger" | "success";
+	};
+	actions?: DialogAction[];
+	size?: "xs" | "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl" | "7xl";
+}
+
+function showDialog(options: DialogOptions): Promise<void> {
+	return new Promise((resolve) => {
+		const isOpen = ref(true);
+		const dialogOptions = {
+			title: options.title || "",
+			message: options.message,
+			icon: options.icon,
+			size: options.size || "md",
+			actions: (options.actions || []).map((action) => ({
+				label: action.label,
+				variant: action.variant || "subtle",
+				theme: action.theme || "gray",
+				onClick: async ({ close }: { close: () => void }) => {
+					if (action.onClick) {
+						await action.onClick();
+					}
+					close();
+				},
+			})),
+		};
+
+		const DialogComponent = markRaw(
+			defineComponent({
+				name: "DynamicDialog",
+				setup() {
+					const handleClose = () => {
+						isOpen.value = false;
+						// Remove dialog from appDialogs after animation
+						setTimeout(() => {
+							const builderStore = useBuilderStore();
+							const index = builderStore.appDialogs.indexOf(DialogComponent);
+							if (index > -1) {
+								builderStore.appDialogs.splice(index, 1);
+							}
+							resolve();
+						}, 200);
+					};
+
+					return () =>
+						h(Dialog, {
+							modelValue: isOpen.value,
+							"onUpdate:modelValue": (val: boolean) => {
+								isOpen.value = val;
+								if (!val) handleClose();
+							},
+							options: dialogOptions,
+						});
+				},
+			}),
+		) as typeof Dialog;
+
+		const builderStore = useBuilderStore();
+		builderStore.appDialogs.push(DialogComponent);
+	});
+}
+
+function getCollectionKeys(block: any): string[] {
+	// traverse up the block to get list of dataKeys set
+	const repeaterBlock = block.getRepeaterParent();
+	const keys: string[] = [];
+	if (repeaterBlock) {
+		const collectionKey = repeaterBlock.getDataKey("key");
+		if (collectionKey) {
+			keys.push(collectionKey);
+		}
+		const parentKeys: string[] = getCollectionKeys(repeaterBlock);
+		if (parentKeys.length > 0) {
+			keys.unshift(...parentKeys);
+		}
+	}
+	return keys;
+}
+
+function triggerCopyEvent() {
+	document.execCommand("copy");
+}
 export {
 	addPxToNumber,
 	alert,
@@ -505,14 +911,19 @@ export {
 	getBlockInstance,
 	getBlockObjectCopy as getBlockObject,
 	getBlockString,
+	getBoxSpacing,
+	getCollectionKeys,
 	getCopyWithoutParent,
 	getDataForKey,
 	getFontName,
+	getImageBlock,
 	getNumberFromPx,
 	getRandomColor,
 	getRGB,
+	getRootBlockTemplate,
 	getRouteVariables,
 	getTextContent,
+	getVideoBlock,
 	HexToHSV,
 	HSVToHex,
 	isBlock,
@@ -523,9 +934,17 @@ export {
 	kebabToCamelCase,
 	logObjectDiff,
 	mapToObject,
+	openInDesk,
+	parseAndSetBackground,
+	parseBackground,
 	replaceMapKey,
 	RGBToHex,
+	setBoxSpacing,
+	shortenNumber,
+	showDialog,
 	stripExtension,
 	throttle,
+	toKebabCase,
+	triggerCopyEvent,
 	uploadImage,
 };

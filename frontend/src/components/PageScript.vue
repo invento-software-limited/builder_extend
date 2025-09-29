@@ -4,7 +4,7 @@
 			<BuilderButton @click="showClientScriptEditor()" class="flex-1">Client Script</BuilderButton>
 			<BuilderButton @click="showServerScriptEditor()" class="flex-1">Data Script</BuilderButton>
 		</div>
-		<CodeEditor v-model="store.pageData" type="JSON" label="Data Preview" :readonly="true"></CodeEditor>
+		<CodeEditor v-model="pageStore.pageData" type="JSON" label="Data Preview" :readonly="true"></CodeEditor>
 		<Dialog
 			style="z-index: 40"
 			class="overscroll-none"
@@ -17,23 +17,34 @@
 			<template #body-content>
 				<div v-if="currentScriptEditor == 'client'">
 					<PageClientScriptManager
-						:page="store.activePage as BuilderPage"
+						:page="pageStore.activePage as BuilderPage"
 						ref="clientScriptManager"></PageClientScriptManager>
 				</div>
 				<div v-else>
-					<CodeEditor
-						class="overscroll-none"
-						ref="dataScriptEditor"
-						v-model="page.page_data_script"
-						type="Python"
-						height="65vh"
-						@save="savePageDataScript"
-						:showSaveButton="true"
-						description='Use Data Script to provide dynamic data to your web page.<br>
-						<b>Example:</b> data.events = frappe.get_list("Event")<br><br>
-						For more details on how to write data script, refer to <b><a class="underline" href="https://docs.frappe.io/builder/data-script" target="_blank">this documentation</a></b>.
-						'
-						:show-line-numbers="true"></CodeEditor>
+					<div class="flex gap-4">
+						<CodeEditor
+							class="w-full overscroll-none"
+							ref="dataScriptEditor"
+							v-model="page.page_data_script"
+							type="Python"
+							height="60vh"
+							:autofocus="true"
+							@save="savePageDataScript"
+							:showSaveButton="true"
+							:show-line-numbers="true"></CodeEditor>
+						<CodeEditor
+							v-model="pageStore.pageData"
+							type="JSON"
+							label="Data Preview"
+							:showLineNumbers="true"
+							class="-mt-5 w-2/3 [&>div>div]:bg-surface-white"
+							height="calc(100% - 110px)"
+							description='Use Data Script to provide dynamic data to your web page.<br>
+								<b>Example:</b> data.events = frappe.get_list("Event")<br><br>
+								For more details on how to write data script, refer to <b><a class="underline" href="https://docs.frappe.io/builder/data-script" target="_blank">this documentation</a></b>.
+								'
+							:readonly="true"></CodeEditor>
+					</div>
 				</div>
 			</template>
 		</Dialog>
@@ -42,14 +53,17 @@
 <script lang="ts" setup>
 import Dialog from "@/components/Controls/Dialog.vue";
 import { webPages } from "@/data/webPage";
-import useStore from "@/store";
+import useBuilderStore from "@/stores/builderStore";
+import usePageStore from "@/stores/pageStore";
 import { posthog } from "@/telemetry";
 import { BuilderPage } from "@/types/Builder/BuilderPage";
-import { computed, defineComponent, ref } from "vue";
+import { computed, defineComponent, ref, watch } from "vue";
 import { toast } from "vue-sonner";
 import CodeEditor from "./Controls/CodeEditor.vue";
 import PageClientScriptManager from "./PageClientScriptManager.vue";
-const store = useStore();
+
+const pageStore = usePageStore();
+const builderStore = useBuilderStore();
 const showDialog = ref(false);
 
 const props = defineProps<{
@@ -70,7 +84,7 @@ const savePageDataScript = (value: string) => {
 		.then(() => {
 			posthog.capture("builder_page_data_script_saved");
 			props.page.page_data_script = value;
-			store.setPageData(props.page);
+			pageStore.setPageData(props.page);
 			toast.success("Data script saved");
 		})
 		.catch((e: { message: string; exc: string; messages: [string] }) => {
@@ -104,5 +118,15 @@ const isDirty = computed(() => {
 	}
 	return false;
 });
+
+watch(
+	() => builderStore.showDataScriptDialog,
+	() => {
+		// if showDataScriptDialog is true, open the dialog
+		if (builderStore.showDataScriptDialog) {
+			showServerScriptEditor();
+			builderStore.showDataScriptDialog = false; // reset the flag
+		}
+	},
+);
 </script>
-<style></style>
